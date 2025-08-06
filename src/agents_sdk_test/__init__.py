@@ -148,6 +148,133 @@ shopping_cart_agent = Agent[ShoppingContext](
     tools=[lookup_shopping_cart, add_to_cart, remove_from_cart, modify_product_in_cart],
 )
 
+class ProductPrice(BaseModel):
+    '''
+    Information about the price of a product
+    currency: the ISO of the currency quoted
+    total_amount: the total amount
+    individual_adult_amount: the price for a single adult
+    individual_children_amount: the price for a single children
+    discount_resume: discounts applied to the price
+    '''
+    currency: str
+    total_amount: float
+    individual_adult_amount: float
+    individual_children_amount: float
+    discounts_resume: str
+
+@function_tool(
+    use_docstring_info=True
+)
+async def price_inquiry_tool(ctx: RunContextWrapper[ShoppingContext], park_id: int, visit_date: str, adults: int, children: int) -> ProductPrice:
+    """
+    Looks up the price for given product using the id, visit date, and the number of adults and children visiting
+    PARAMS
+    park_id: the park's id,
+    visit_date: the product's visit date
+    adults: number of adults visiting
+    children: number of children visiting
+    RETURNS
+    An object with the total amount and a short description of discounts applied to the price
+    """
+    discount_resume = "15 percent discount because of the visit date"
+    adultP=1000
+    childrenP=500
+    total_amount=adults*adultP + children*childrenP
+    if (ctx.context.shopping_cart.__len__() > 0):
+        total_amount *= 0.8
+        discount_resume = "20 percent discount because of products in shopping cart"
+    price = ProductPrice(
+        currency=ctx.context.currency,
+        total_amount=total_amount,
+        individual_adult_amount=adultP,
+        individual_children_amount=childrenP,
+        discounts_resume=discount_resume
+    )
+    return price
+
+@function_tool(
+    use_docstring_info=True
+)
+async def promotion_inquiry_tool(park_id: int) -> List[str]:
+    """
+    Looks up promotions available either in general or for a given park
+    PARAMS
+    park_id: the park's numeric id if known
+    """
+    promotions = list()
+    promotions.append("PROMOMEX coupon for 10 percent off for Mexican visitors")
+    promotions.append("Presale discount for certain parks of up to 15 percent off if buying 21 days in advance")
+    return promotions
+
+@function_tool(
+    use_docstring_info=True
+)
+async def park_information_tool(park_id: int) -> List[str]:
+    """
+    Looks up information for a particular park
+    PARAMS
+    park_id: the park_id's nnumeric id
+    RETURNS
+    A list of information about a particular park
+    """
+    features = list()
+    features.append("Access to the pools")
+    features.append("Giftshop")
+    if (park_id == 10):
+        features.append("A big Arcade full of old school cabinets")
+    if (park_id == 4):
+        features.append("A buffet of sweets from around the world")
+    return features
+
+@function_tool(
+    use_docstring_info=True
+)
+async def general_information_tool(query: str) -> List[str]:
+    """
+    Looks up information about our theme parks given a query
+    PARAMS
+    query: the question or topic you want information about
+    RETURNS
+    A list of information about the question or topic
+    """
+    print(f'The query for the tool: {query}')
+    info = list()
+    info.append("No data available")
+    return info
+
+parks_information_agent = Agent[ShoppingContext](
+    name="Parks information agent",
+    handoff_description="A helpful agent that handles a client's questions about our theme parks.",
+    instructions=f"""{RECOMMENDED_PROMPT_PREFIX}
+    You are an agent in charge of information about our theme parks. If you are speaking to a customer, you probably were transferred to from the triage agent.
+    If you believe the client is not making inquiries about our theme parks inform the triage agent you can't do any actions.
+    The parks available are the following ones:
+    {available_parks}
+    Use the following routines to support the customer.
+    Always return to the triage agent after you're done
+    PRICE INQUIRY ROUTINE
+    1.- Make sure we offer the park the client wants to know the price of
+    If the park the client wants is not in this list mention the available ones
+    2.- Ask for the date of visit if not provided, it should specify the year, month and day
+    3.- Ask for the number of adults and children visiting, if not provided default to 1 adult. The visit always has to have at least 1 adult
+    4.- Use the price_inquiry_tool to obtain the price for the park, make sure to mention the discounts applied over the regular price
+    5.- Offer the client the option to buy them via the agent if they are interested.
+    PROMOTIONS INQUIRY ROUTINE
+    1.- Check if the user wants promotions about a park in particular or just general promotions
+    2.- Use the promotion_inquiry_tool to obtain currently running promotions
+    PARK COMPARISON ROUTINE
+    1.- You can only compare two parks at once, ask for them if not provided
+    2.- Use the product_information tool to obtain information about each theme park
+    3.- Only use the information provided by the tool to make the comparison between parks
+    4.- Return a table with the similarities and differences between them
+    GENERAL INFORMATION ROUTINE
+    1.- Use the provided tools to obtain the information the client wants regarding our theme parks
+    2.- Only use the information provided by the tools for answers, not your own knowledge
+    3.- If the tools don't provide enough information to provide an answer suggest to contact our customer service calling the number 000-00-0000, or via whatsapp at 00-000-000-0001 instead
+    """,
+    tools=[price_inquiry_tool, promotion_inquiry_tool, park_information_tool, general_information_tool],
+)
 
 triage_agent = Agent[ShoppingContext](
     name="Triage Agent",
@@ -155,21 +282,20 @@ triage_agent = Agent[ShoppingContext](
     instructions=(
         f"{RECOMMENDED_PROMPT_PREFIX} "
         "You are a helpful triaging agent. You can use your tools to delegate questions to other appropriate agents."
-        "Only do 1 handoff per run"
         "If the user's input is unrelated to theme park reservations or pricing reply you can't help them"
         "Your available agents are:"
-        "shopping_cart_agent - Handles product reservations and any information regarding the client's shopping cart"
-        #"parks_information_agent - Handles general information about our products as well as park prices"
-        ""
-        "If the agents can't help the user apologize and request a new query"
+        "shopping_cart_agent - Handles the client wanting to buy tickets for the park and any information regarding the client's shopping cart"
+        "parks_information_agent - Handles general information about our products as well as any questions related to prices"
+        "If the agents can't help the user apologize and request a new input"
     ),
     handoffs=[
         shopping_cart_agent,
-        #parks_information_agent,
+        parks_information_agent,
     ],
 )
 
 shopping_cart_agent.handoffs.append(triage_agent)
+parks_information_agent.handoffs.append(triage_agent)
 
 async def main():
     current_agent: Agent[ShoppingContext] = triage_agent
