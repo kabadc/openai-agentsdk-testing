@@ -16,6 +16,7 @@ Name: Funland Park Id: 1
 Name: Springland Park Id: 2
 Name: Futureland Park Id: 3
 Name: Sweetland Park Id: 4
+Name: Sweetland Deluxe Park Id: 5
 Name: Retroland Park Id: 10
 """
 today= datetime.datetime.now()
@@ -125,10 +126,12 @@ shopping_cart_agent = Agent[ShoppingContext](
     Always use the lookup_shopping_cart tool to see what the customer currently has in their shopping cart.
     The products currently available for sale are the following ones:
     {available_parks}
+    You're not allowed to give general information about the parks' features, let a different agent handle that.
     Use the following routines to support the customer.
     PARK RESERVATION ROUTINE:
     1.- Make sure we offer the park the client wants to reserve.
     If the park the client wants is not in this list offer the available ones
+    If the client wants a ticket to sweetland alwats make sure if the mean Sweetland Park or Sweetland Deluxe Park
     If the park is already in the cart or a park is already in the cart for the selected date suggest using a diffent date and don't perform any other action.
     2.- Ask for the date of visit if not provided, it should specify the year, month and day
     3.- Ask for the number of adults and children visiting if not provided
@@ -224,7 +227,13 @@ async def park_information_tool(park_id: int) -> List[str]:
     if (park_id == 10):
         features.append("A big Arcade full of old school cabinets")
     if (park_id == 4):
-        features.append("A buffet of sweets from around the world")
+        features.append("Our signature giant chocolate fountain at the center of the park")
+        features.append("Giftshops with sweets from around the world")
+    if (park_id == 5):
+        features.append("Our signature giant chocolate fountain at the center of the park")
+        features.append("Giftshops with sweets from around the world")
+        features.append("A guided journey through the history of chocolate")
+        features.append("1 free meal per person at any of the restaurants")
     return features
 
 @function_tool(
@@ -266,11 +275,11 @@ parks_information_agent = Agent[ShoppingContext](
     PARK COMPARISON ROUTINE
     1.- You can only compare two parks at once, ask for them if not provided
     2.- Use the product_information tool to obtain information about each theme park
-    3.- Only use the information provided by the tool to make the comparison between parks
+    3.- Use only the information provided by the tool to make the comparison between parks
     4.- Return a table with the similarities and differences between them
     GENERAL INFORMATION ROUTINE
     1.- Use the provided tools to obtain the information the client wants regarding our theme parks
-    2.- Only use the information provided by the tools for answers, not your own knowledge
+    2.- Use only the information provided by the tools for answers, not your own knowledge
     3.- If the tools don't provide enough information to provide an answer suggest to contact our customer service calling the number 000-00-0000, or via whatsapp at 00-000-000-0001 instead
     """,
     tools=[price_inquiry_tool, promotion_inquiry_tool, park_information_tool, general_information_tool],
@@ -316,9 +325,11 @@ async def main():
         with trace("Customer service", group_id=conversation_id):
             input_items.append({"content": user_input, "role": "user"})
             result = await Runner.run(current_agent, input_items, context=context)
+            '''
             for new_item in result.new_items:
                 agent_name = new_item.agent.name
                 if isinstance(new_item, MessageOutputItem):
+                    #print(f"{agent_name}: {ItemHelpers.text_message_output(new_item)}")
                     print(f"{agent_name}: {ItemHelpers.text_message_output(new_item)}")
                 elif isinstance(new_item, HandoffOutputItem):
                     print(
@@ -330,9 +341,15 @@ async def main():
                     print(f"{agent_name}: Tool call output: {new_item.output}")
                 else:
                     print(f"{agent_name}: Skipping item: {new_item.__class__.__name__}")
+            '''
+            for new_item in result.new_items:
+                if isinstance(new_item, MessageOutputItem):
+                    print(f"{ItemHelpers.text_message_output(new_item)}")
             input_items = result.to_input_list()
             current_agent = result.last_agent
-            print(result.context_wrapper.context)
+            print(f'*****************')
+            print(f'Current shopping cart: {context.shopping_cart}')
+            print(f'*****************')
 
 
 if __name__ == "__main__":
